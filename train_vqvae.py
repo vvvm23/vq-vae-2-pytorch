@@ -15,7 +15,7 @@ from scheduler import CycleScheduler
 import distributed as dist
 
 
-def train(epoch, loader, model, optimizer, scheduler, device):
+def train(epoch, loader, model, optimizer, scheduler, scaler, device):
     if dist.is_primary():
         loader = tqdm(loader)
 
@@ -32,15 +32,17 @@ def train(epoch, loader, model, optimizer, scheduler, device):
 
         img = img.to(device)
 
-        out, latent_loss = model(img)
-        recon_loss = criterion(out, img)
-        latent_loss = latent_loss.mean()
-        loss = recon_loss + latent_loss_weight * latent_loss
-        loss.backward()
+        with torch.cuda.amp.autocast():
+            out, latent_loss = model(img)
+            recon_loss = criterion(out, img)
+            latent_loss = latent_loss.mean()
+            loss = recon_loss + latent_loss_weight * latent_loss
+        scaler.scale(loss).backward()
 
         if scheduler is not None:
             scheduler.step()
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
 
         part_mse_sum = recon_loss.item() * img.shape[0]
         part_mse_n = img.shape[0]
@@ -111,6 +113,7 @@ def main(args):
         )
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    scaler = torch.cuda.amp.GradScaler()
     scheduler = None
     if args.sched == "cycle":
         scheduler = CycleScheduler(
@@ -122,7 +125,7 @@ def main(args):
         )
 
     for i in range(args.epoch):
-        train(i, loader, model, optimizer, scheduler, device)
+        train(i, loader, model, optimizer, scheduler, scaler, device)
 
         if dist.is_primary():
             torch.save(model.state_dict(), f"checkpoint/vqvae_{str(i + 1).zfill(3)}.pt")

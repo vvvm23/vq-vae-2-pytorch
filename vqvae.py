@@ -33,13 +33,14 @@ class Quantize(nn.Module):
         self.decay = decay
         self.eps = eps
 
-        embed = torch.randn(dim, n_embed)
+        embed = torch.randn(dim, n_embed, dtype=torch.float32)
         self.register_buffer("embed", embed)
-        self.register_buffer("cluster_size", torch.zeros(n_embed))
+        self.register_buffer("cluster_size", torch.zeros(n_embed, dtype=torch.float32))
         self.register_buffer("embed_avg", embed.clone())
 
+    @torch.cuda.amp.autocast(enabled=False)
     def forward(self, input):
-        flatten = input.reshape(-1, self.dim)
+        flatten = input.reshape(-1, self.dim).float()
         dist = (
             flatten.pow(2).sum(1, keepdim=True)
             - 2 * flatten @ self.embed
