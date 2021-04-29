@@ -32,7 +32,7 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, device):
 
         img = img.to(device)
 
-        with torch.cuda.amp.autocast():
+        with torch.cuda.amp.autocast(scaler.is_enabled()):
             out, latent_loss = model(img)
             recon_loss = criterion(out, img)
             latent_loss = latent_loss.mean()
@@ -69,7 +69,7 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, device):
 
                 sample = img[:sample_size]
 
-                with torch.no_grad():
+                with torch.no_grad(), torch.cuda.amp.autocast(scaler.is_enabled()):
                     out, _ = model(sample)
 
                 utils.save_image(
@@ -113,7 +113,7 @@ def main(args):
         )
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.cuda.amp.GradScaler(enabled = not args.disable_amp)
     scheduler = None
     if args.sched == "cycle":
         scheduler = CycleScheduler(
@@ -145,6 +145,7 @@ if __name__ == "__main__":
     parser.add_argument("--size", type=int, default=256)
     parser.add_argument("--epoch", type=int, default=560)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--disable-amp", action='store_true')
     parser.add_argument("--sched", type=str)
     parser.add_argument("path", type=str)
 
